@@ -331,6 +331,7 @@ private:
 	void _navigation_notification(int p_what);
 	void _navigation_clear_cell(CellData &r_cell_data);
 	void _navigation_update_cell(CellData &r_cell_data);
+  bool _navigation_should_use_cell(const CellData &r_cell_data) const;
 #ifdef DEBUG_ENABLED
 	void _navigation_draw_cell_debug(const RID &p_canvas_item, const Vector2 &p_quadrant_pos, const CellData &r_cell_data);
 #endif // DEBUG_ENABLED

@@ -1031,7 +1031,7 @@ void TileMapLayer::_navigation_update_cell(CellData &r_cell_data) {
 	TileMapCell &c = r_cell_data.cell;
 
 	TileSetSource *source;
-	if (tile_set->has_source(c.source_id)) {
+	if (tile_set->has_source(c.source_id) && _navigation_should_use_cell(r_cell_data)) {
 		source = *tile_set->get_source(c.source_id);
 
 		if (source->has_tile(c.get_atlas_coords()) && source->has_alternative_tile(c.get_atlas_coords(), c.alternative_tile)) {
@@ -1097,6 +1097,25 @@ void TileMapLayer::_navigation_update_cell(CellData &r_cell_data) {
 	_navigation_clear_cell(r_cell_data);
 }
 
+bool TileMapLayer::_navigation_should_use_cell(const CellData &r_cell_data) const {
+  if (layer_index_in_tile_map_node+1 == tile_map_node->get_layers_count()) {
+    return true;
+  }
+
+	const Ref<TileSet> &tile_set = get_effective_tile_set();
+
+  for (int i = tile_map_node->get_layers_count()-1; i > layer_index_in_tile_map_node; i--) {
+    if (tile_map_node->is_layer_enabled(i)
+      && tile_map_node->is_layer_navigation_enabled(i)
+      && tile_map_node->get_cell_tile_data(i, r_cell_data.coords) != nullptr
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 #ifdef DEBUG_ENABLED
 void TileMapLayer::_navigation_draw_cell_debug(const RID &p_canvas_item, const Vector2 &p_quadrant_pos, const CellData &r_cell_data) {
 	// Draw the debug collision shapes.
@@ -1137,7 +1156,7 @@ void TileMapLayer::_navigation_draw_cell_debug(const RID &p_canvas_item, const V
 	const TileMapCell &c = r_cell_data.cell;
 
 	TileSetSource *source;
-	if (tile_set->has_source(c.source_id)) {
+	if (tile_set->has_source(c.source_id) && _navigation_should_use_cell(r_cell_data)) {
 		source = *tile_set->get_source(c.source_id);
 
 		if (source->has_tile(c.get_atlas_coords()) && source->has_alternative_tile(c.get_atlas_coords(), c.alternative_tile)) {
