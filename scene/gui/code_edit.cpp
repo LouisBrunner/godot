@@ -733,14 +733,15 @@ void CodeEdit::_backspace_internal(int p_caret) {
 				prev_column = cc - auto_brace_completion_pairs[idx].open_key.length();
 
 				if (_get_auto_brace_pair_close_at_pos(cl, cc) == idx) {
-					remove_text(prev_line, prev_column, cl, cc + auto_brace_completion_pairs[idx].close_key.length());
-				} else {
-					remove_text(prev_line, prev_column, cl, cc);
+					cc += auto_brace_completion_pairs[idx].close_key.length();
 				}
+
+				remove_text(prev_line, prev_column, cl, cc);
+
 				set_caret_line(prev_line, false, true, 0, i);
 				set_caret_column(prev_column, i == 0, i);
 
-				adjust_carets_after_edit(i, prev_line, prev_column, cl, cc + auto_brace_completion_pairs[idx].close_key.length());
+				adjust_carets_after_edit(i, prev_line, prev_column, cl, cc);
 				continue;
 			}
 		}
@@ -3397,9 +3398,16 @@ void CodeEdit::_filter_code_completion_candidates_impl() {
 		int offset = option.default_value.get_type() == Variant::COLOR ? line_height : 0;
 
 		if (in_string != -1) {
+			// The completion string may have a literal behind it, which should be removed before re-quoting.
+			String literal;
+			if (option.insert_text.substr(1).is_quoted()) {
+				literal = option.display.left(1);
+				option.display = option.display.substr(1);
+				option.insert_text = option.insert_text.substr(1);
+			}
 			String quote = single_quote ? "'" : "\"";
-			option.display = option.display.unquote().quote(quote);
-			option.insert_text = option.insert_text.unquote().quote(quote);
+			option.display = literal + (option.display.unquote().quote(quote));
+			option.insert_text = literal + (option.insert_text.unquote().quote(quote));
 		}
 
 		if (option.display.length() == 0) {

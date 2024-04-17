@@ -2643,6 +2643,7 @@ void CanvasItemEditor::_update_cursor() {
 void CanvasItemEditor::_update_lock_and_group_button() {
 	bool all_locked = true;
 	bool all_group = true;
+	bool has_canvas_item = false;
 	List<Node *> selection = editor_selection->get_selected_node_list();
 	if (selection.is_empty()) {
 		all_locked = false;
@@ -2657,6 +2658,7 @@ void CanvasItemEditor::_update_lock_and_group_button() {
 				if (all_group && !item->has_meta("_edit_group_")) {
 					all_group = false;
 				}
+				has_canvas_item = true;
 			}
 			if (!all_locked && !all_group) {
 				break;
@@ -2664,12 +2666,17 @@ void CanvasItemEditor::_update_lock_and_group_button() {
 		}
 	}
 
+	all_locked = all_locked && has_canvas_item;
+	all_group = all_group && has_canvas_item;
+
 	lock_button->set_visible(!all_locked);
-	lock_button->set_disabled(selection.is_empty());
+	lock_button->set_disabled(!has_canvas_item);
 	unlock_button->set_visible(all_locked);
+	unlock_button->set_disabled(!has_canvas_item);
 	group_button->set_visible(!all_group);
-	group_button->set_disabled(selection.is_empty());
+	group_button->set_disabled(!has_canvas_item);
 	ungroup_button->set_visible(all_group);
+	ungroup_button->set_disabled(!has_canvas_item);
 }
 
 Control::CursorShape CanvasItemEditor::get_cursor_shape(const Point2 &p_pos) const {
@@ -4011,6 +4018,9 @@ void CanvasItemEditor::_notification(int p_what) {
 			AnimationPlayerEditor::get_singleton()->connect("animation_selected", callable_mp(this, &CanvasItemEditor::_keying_changed).unbind(1));
 			_keying_changed();
 			_update_editor_settings();
+
+			connect("item_lock_status_changed", callable_mp(this, &CanvasItemEditor::_update_lock_and_group_button));
+			connect("item_group_status_changed", callable_mp(this, &CanvasItemEditor::_update_lock_and_group_button));
 		} break;
 
 		case EditorSettings::NOTIFICATION_EDITOR_SETTINGS_CHANGED: {
@@ -5850,13 +5860,34 @@ bool CanvasItemEditorViewport::_create_instance(Node *parent, String &path, cons
 }
 
 void CanvasItemEditorViewport::_perform_drop_data() {
+	ERR_FAIL_COND(selected_files.size() <= 0);
+
 	_remove_preview();
 
-	// Without root dropping multiple files is not allowed
-	if (!target_node && selected_files.size() > 1) {
-		accept->set_text(TTR("Cannot instantiate multiple nodes without root."));
-		accept->popup_centered();
-		return;
+	if (!target_node) {
+		// Without root dropping multiple files is not allowed
+		if (selected_files.size() > 1) {
+			accept->set_text(TTR("Cannot instantiate multiple nodes without root."));
+			accept->popup_centered();
+			return;
+		}
+
+		const String &path = selected_files[0];
+		Ref<Resource> res = ResourceLoader::load(path);
+		if (res.is_null()) {
+			return;
+		}
+
+		Ref<PackedScene> scene = res;
+		if (scene.is_valid()) {
+			// Without root node act the same as "Load Inherited Scene".
+			Error err = EditorNode::get_singleton()->load_scene(path, false, true);
+			if (err != OK) {
+				accept->set_text(vformat(TTR("Error instantiating scene from %s."), path.get_file()));
+				accept->popup_centered();
+			}
+			return;
+		}
 	}
 
 	PackedStringArray error_files;
@@ -5872,27 +5903,21 @@ void CanvasItemEditorViewport::_perform_drop_data() {
 		if (res.is_null()) {
 			continue;
 		}
-		Ref<PackedScene> scene = Ref<PackedScene>(Object::cast_to<PackedScene>(*res));
-		if (scene != nullptr && scene.is_valid()) {
-			if (!target_node) {
-				// Without root node act the same as "Load Inherited Scene"
-				Error err = EditorNode::get_singleton()->load_scene(path, false, true);
-				if (err != OK) {
-					error_files.push_back(path.get_file());
-				}
-			} else {
-				bool success = _create_instance(target_node, path, drop_pos);
-				if (!success) {
-					error_files.push_back(path.get_file());
-				}
+
+		Ref<PackedScene> scene = res;
+		if (scene.is_valid()) {
+			bool success = _create_instance(target_node, path, drop_pos);
+			if (!success) {
+				error_files.push_back(path.get_file());
 			}
-		} else {
-			Ref<Texture2D> texture = Ref<Texture2D>(Object::cast_to<Texture2D>(*res));
-			if (texture != nullptr && texture.is_valid()) {
-				Node *child = Object::cast_to<Node>(ClassDB::instantiate(default_texture_node_type));
-				_create_nodes(target_node, child, path, drop_pos);
-				undo_redo->add_do_method(editor_selection, "add_node", child);
-			}
+			continue;
+		}
+
+		Ref<Texture2D> texture = res;
+		if (texture.is_valid()) {
+			Node *child = Object::cast_to<Node>(ClassDB::instantiate(default_texture_node_type));
+			_create_nodes(target_node, child, path, drop_pos);
+			undo_redo->add_do_method(editor_selection, "add_node", child);
 		}
 	}
 
@@ -5934,7 +5959,7 @@ bool CanvasItemEditorViewport::can_drop_data(const Point2 &p_point, const Varian
 				}
 
 				Node *edited_scene = EditorNode::get_singleton()->get_edited_scene();
-				if (_cyclical_dependency_exists(edited_scene->get_scene_file_path(), instantiated_scene)) {
+				if (edited_scene && !edited_scene->get_scene_file_path().is_empty() && _cyclical_dependency_exists(edited_scene->get_scene_file_path(), instantiated_scene)) {
 					memdelete(instantiated_scene);
 					can_instantiate = false;
 					is_cyclical_dep = true;
