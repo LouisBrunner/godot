@@ -1094,8 +1094,6 @@ bool TileMapLayer::_navigation_should_use_cell(const CellData &r_cell_data) cons
     return true;
   }
 
-	const Ref<TileSet> &tile_set = get_effective_tile_set();
-
   for (int i = tile_map_node->get_layers_count()-1; i > layer_index_in_tile_map_node; i--) {
     if (tile_map_node->is_layer_enabled(i)
       && tile_map_node->is_layer_navigation_enabled(i)
